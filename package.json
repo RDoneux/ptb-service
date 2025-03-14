@@ -8,6 +8,7 @@
     "dev": "npx nodemon ./src/index.ts",
     "build": "node ./build.mjs",
     "start": "npm run build && cd dist && node index.js",
+    "start-ci": "cd dist && node index.js",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down ",
     "lint": "npx eslint . --fix",

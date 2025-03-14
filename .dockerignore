@@ -3,11 +3,6 @@ node_modules
 npm-debug.log
 yarn-error.log
 
-# Ignore build artifacts
-dist/
-build/
-*.log
-
 # Ignore Docker files
 Dockerfile
 .dockerignore
