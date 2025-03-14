@@ -42,12 +42,31 @@ export const server = application.listen(PORT, (error?: Error) => {
 // test environment will handle dataSource connection, no need to establish it in server
 if (environment !== 'test') {
   // connect to database
+  attemptConnectionToDataSource();
+  // dataSource
+  //   .initialize()
+  //   .then(() => {
+  //     infoLog('Database initalised successfully');
+  //   })
+  //   .catch((error: Error) => {
+  //     errorLog(`There was an error initalising database: ${error}`);
+  //   });
+}
+
+function attemptConnectionToDataSource(attempts: number = 0) {
   dataSource
     .initialize()
     .then(() => {
       infoLog('Database initalised successfully');
     })
     .catch((error: Error) => {
-      errorLog(`There was an error initalising database: ${error}`);
+      if(attempts < 5) {
+        infoLog('There was an error initalising database. Attempting to connect again...');
+        setTimeout(() => {
+          attemptConnectionToDataSource(attempts + 1);
+        }, 5000);
+      } else {
+        errorLog(`There was an error initalising database: ${error}`);
+      }
     });
 }
