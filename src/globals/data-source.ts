@@ -18,6 +18,7 @@ const _dataSource = new DataSource({
   migrations: ['src/resources/migrations/*.ts'],
   logging: true,
   synchronize: false,
+  ssl: { rejectUnauthorized: false },
 });
 
 export const dataSource = process.env.NODE_ENV === 'test' ? testDataSource : _dataSource;

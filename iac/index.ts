@@ -1,7 +1,9 @@
 import { ResourceGroup } from '@pulumi/azure/core';
 import { Group } from '@pulumi/azure/containerservice';
-import { Config } from '@pulumi/pulumi';
+import { Config, StackReference } from '@pulumi/pulumi';
 import { Image } from '@pulumi/docker';
+import { FlexibleDatabase } from '@pulumi/azure/mysql/flexibleDatabase';
+import { FlexibleServer } from '@pulumi/azure/mysql';
 
 const azureConfig = new Config('azure');
 const config = new Config();
@@ -9,9 +11,25 @@ const config = new Config();
 const location = azureConfig.require('location');
 const prefix = config.require('prefix');
 
+const ptbCoreInfraStack = new StackReference('organization/ptb-core-infra/dev');
+const databaseServer = ptbCoreInfraStack
+  .getOutput('databaseServer')
+  .apply((server) => server as FlexibleServer);
+const dbResourceGroupName = ptbCoreInfraStack
+  .getOutput('resourceGroupName')
+  .apply((name) => name as string);
+
 // https://www.pulumi.com/registry/packages/azure/api-docs/core/resourcegroup/
 const resourceGroup = new ResourceGroup(`${prefix}-resource-group`, {
   location,
+});
+
+const exampleFlexibleDatabase = new FlexibleDatabase(`${prefix}-db`, {
+  name: prefix,
+  resourceGroupName: dbResourceGroupName,
+  serverName: databaseServer.name,
+  charset: 'utf8',
+  collation: 'utf8_unicode_ci',
 });
 
 // https://www.pulumi.com/registry/packages/docker/api-docs/image/
@@ -23,25 +41,6 @@ const image = new Image(`${prefix}-image`, {
   imageName: 'docker.io/rdoneux/ptb-service:latest',
   skipPush: false,
 });
-
-const mysqlContainer = {
-  name: `${prefix}-mysql`,
-  image: 'mysql:latest',
-  memory: 1,
-  cpu: 1,
-  ports: [
-    {
-      port: +config.require('mysqlPort'),
-      protocol: 'TCP',
-    },
-  ],
-  environmentVariables: {
-    MYSQL_ROOT_PASSWORD: config.require('mysqlRootPassword'),
-    MYSQL_DATABASE: config.require('mysqlDatabase'),
-    MYSQL_USER: config.require('mysqlUser'),
-    MYSQL_PASSWORD: config.require('mysqlPassword')
-  },
-};
 
 const nodeJsContainer = {
   name: `${prefix}-nodejs`,
@@ -55,11 +54,10 @@ const nodeJsContainer = {
     },
   ],
   environmentVariables: {
-    DS_USERNAME: mysqlContainer.environmentVariables.MYSQL_USER,
-    DS_PASSWORD: mysqlContainer.environmentVariables.MYSQL_PASSWORD,
-    DS_DATABASE: mysqlContainer.environmentVariables.MYSQL_DATABASE,
-    DS_PORT: `${mysqlContainer.ports[0].port}`,
-    DS_HOST: 'localhost',
+    DS_USERNAME: databaseServer.administratorLogin as any,
+    DS_PASSWORD: databaseServer.administratorPassword as any,
+    DS_DATABASE: exampleFlexibleDatabase.name,
+    DS_HOST: databaseServer.fqdn,
     DEBUG: 'tplt-node-server:*',
     PORT: `${config.require('nodePort')}`,
   },
@@ -67,13 +65,13 @@ const nodeJsContainer = {
 
 // https://www.pulumi.com/registry/packages/azure/api-docs/containerservice/group/
 const containerGroup = new Group(`${prefix}-group`, {
-  containers: [
-    mysqlContainer,
-    nodeJsContainer,
-  ],
+  containers: [nodeJsContainer],
+  ipAddressType: 'Private',
+  subnetIds: ptbCoreInfraStack.getOutput('privateSubnetId'),
   osType: 'Linux',
   resourceGroupName: resourceGroup.name,
   location: resourceGroup.location,
 });
 
 export const containerIP = containerGroup.ipAddress;
+export const containerSubnets = containerGroup.subnetIds;
